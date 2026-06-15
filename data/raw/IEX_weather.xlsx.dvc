@@ -1,0 +1,5 @@
+outs:
+- md5: fe01f056fa46acec91bd9cb18b27f161
+  size: 37786843
+  hash: md5
+  path: IEX_weather.xlsx

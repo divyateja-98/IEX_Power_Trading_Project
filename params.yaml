@@ -1,0 +1,54 @@
+paths:
+  raw_data_dir: data/raw
+  processed_data_dir: data/processed
+  reports_dir: reports
+  models_dir: models
+  raw_market_data: data/raw/IEX_combined.xlsx
+  raw_weather_data: data/raw/IEX_weather.xlsx
+  master_dataset: data/processed/master_dataset.csv
+  cleaned_dataset: data/processed/cleaned_dataset.csv
+  engineered_dataset: data/processed/engineered_dataset.csv
+  model: models/xgboost_model.pkl
+  ingest_report: reports/data_summary.txt
+  merge_report: reports/merge_report.txt
+  cleaning_report: reports/cleaning_report.txt
+  feature_engineering_report: reports/feature_engineering_report.txt
+  training_report: reports/xgboost_model_report.txt
+  modeling_plot_dir: reports/modeling
+  expectations_dir: expectations
+  expectation_suite: expectations/expectations/iex_power_data_quality.json
+  validation_reports_dir: validation_reports
+  validation_report_json: validation_reports/validation_result.json
+  validation_report_html: validation_reports/validation_report.html
+  feature_store_data_dir: data/feature_store
+  historical_features: data/feature_store/historical_features.parquet
+  feast_feature_table: data/processed/feature_engineered.csv
+  feast_feature_parquet: data/processed/feature_engineered.parquet
+
+merge:
+  keys:
+    - Date
+    - Hour
+
+clean:
+  missing_value_strategy: forward_fill_then_numeric_median
+  outlier_method: iqr
+
+feature_engineering:
+  lags: 1,2,24,48
+  rolling_windows: 24
+
+feature_store:
+  entity_id: IEX_DAM
+
+train:
+  test_size: 0.2
+  random_state: 42
+  model_type: xgboost_regressor
+  objective: reg:squarederror
+  n_estimators: 500
+  learning_rate: 0.04
+  max_depth: 5
+  subsample: 0.85
+  colsample_bytree: 0.85
+  eval_metric: rmse

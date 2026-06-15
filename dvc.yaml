@@ -1,0 +1,108 @@
+stages:
+  ingest:
+    cmd: python data_loader.py --data-dir ${paths.raw_data_dir} --report-path ${paths.ingest_report}
+    deps:
+      - data_loader.py
+      - ${paths.raw_market_data}
+      - ${paths.raw_weather_data}
+    params:
+      - paths.raw_data_dir
+      - paths.raw_market_data
+      - paths.raw_weather_data
+      - paths.ingest_report
+    outs:
+      - ${paths.ingest_report}
+
+  merge:
+    cmd: python merge_data.py --data-dir ${paths.raw_data_dir} --output-path ${paths.master_dataset} --report-path ${paths.merge_report}
+    deps:
+      - merge_data.py
+      - ${paths.raw_market_data}
+      - ${paths.raw_weather_data}
+    params:
+      - paths.raw_data_dir
+      - paths.master_dataset
+      - paths.merge_report
+      - merge.keys
+    outs:
+      - ${paths.master_dataset}
+      - ${paths.merge_report}
+
+  clean:
+    cmd: python clean_data.py --input-path ${paths.master_dataset} --output-path ${paths.cleaned_dataset} --report-path ${paths.cleaning_report}
+    deps:
+      - clean_data.py
+      - ${paths.master_dataset}
+      - ${paths.validation_report_json}
+    params:
+      - paths.master_dataset
+      - paths.cleaned_dataset
+      - paths.cleaning_report
+      - clean.missing_value_strategy
+      - clean.outlier_method
+    outs:
+      - ${paths.cleaned_dataset}
+      - ${paths.cleaning_report}
+
+  validate:
+    cmd: python validate_data.py --input-path ${paths.master_dataset} --context-root-dir ${paths.expectations_dir} --reports-dir ${paths.validation_reports_dir}
+    deps:
+      - validate_data.py
+      - ${paths.master_dataset}
+    params:
+      - paths.master_dataset
+      - paths.expectations_dir
+      - paths.validation_reports_dir
+      - paths.expectation_suite
+      - paths.validation_report_json
+      - paths.validation_report_html
+    outs:
+      - ${paths.expectation_suite}
+      - ${paths.validation_report_json}
+      - ${paths.validation_report_html}
+
+  feature_engineering:
+    cmd: python feature_engineering.py --input-path ${paths.cleaned_dataset} --output-path ${paths.engineered_dataset} --report-path ${paths.feature_engineering_report} --lags ${feature_engineering.lags} --rolling-windows ${feature_engineering.rolling_windows}
+    deps:
+      - feature_engineering.py
+      - ${paths.cleaned_dataset}
+    params:
+      - paths.cleaned_dataset
+      - paths.engineered_dataset
+      - paths.feature_engineering_report
+      - feature_engineering.lags
+      - feature_engineering.rolling_windows
+    outs:
+      - ${paths.engineered_dataset}
+      - ${paths.feature_engineering_report}
+
+  feature_store:
+    cmd: python mlops/feature_store/prepare_feature_store_data.py --input-path ${paths.engineered_dataset} --output-path ${paths.feast_feature_table} --parquet-output-path ${paths.feast_feature_parquet} --entity-id ${feature_store.entity_id}
+    deps:
+      - mlops/feature_store/prepare_feature_store_data.py
+      - ${paths.engineered_dataset}
+    params:
+      - paths.engineered_dataset
+      - paths.feast_feature_table
+      - paths.feast_feature_parquet
+      - feature_store.entity_id
+    outs:
+      - ${paths.feast_feature_table}
+      - ${paths.feast_feature_parquet}
+
+  train:
+    cmd: python xgboost_pipeline.py --input-path ${paths.historical_features} --model-path ${paths.model} --report-path ${paths.training_report} --plot-dir ${paths.modeling_plot_dir} --test-size ${train.test_size} --random-state ${train.random_state} --n-estimators ${train.n_estimators} --learning-rate ${train.learning_rate} --max-depth ${train.max_depth} --subsample ${train.subsample} --colsample-bytree ${train.colsample_bytree} --eval-metric ${train.eval_metric}
+    deps:
+      - xgboost_pipeline.py
+      - mlops/mlflow_utils.py
+      - ${paths.historical_features}
+    params:
+      - paths.historical_features
+      - paths.model
+      - paths.training_report
+      - paths.modeling_plot_dir
+      - train
+    outs:
+      - ${paths.model}
+      - ${paths.training_report}
+      - ${paths.modeling_plot_dir}

@@ -1,0 +1,69 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# IDE settings
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Data
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/*.dvc
+data/processed/*
+!data/processed/.gitkeep
+!data/processed/*.dvc
+data/feature_store/*
+!data/feature_store/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# Model artifacts and generated reports
+models/*
+!models/*.dvc
+artifacts/
+reports/*
+!reports/.gitkeep
+
+# Dashboard build outputs
+dashboard/.streamlit/secrets.toml
+dashboard/dist/
+dashboard/build/
+/expectations
+/validation_reports
+/feature_repo/data
+/.feast_metrics

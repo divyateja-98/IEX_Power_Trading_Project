@@ -1,0 +1,240 @@
+schema: '2.0'
+stages:
+  ingest:
+    cmd: python data_loader.py --data-dir data/raw --report-path 
+      reports/data_summary.txt
+    deps:
+    - path: data/raw/IEX_combined.xlsx
+      hash: md5
+      md5: 82abc56896883122cc3dd1e5b871b919
+      size: 6464964
+    - path: data/raw/IEX_weather.xlsx
+      hash: md5
+      md5: fe01f056fa46acec91bd9cb18b27f161
+      size: 37786843
+    - path: data_loader.py
+      hash: md5
+      md5: f9a8412edb0f5505cd4b70c726f737cb
+      size: 3212
+    params:
+      params.yaml:
+        paths.ingest_report: reports/data_summary.txt
+        paths.raw_data_dir: data/raw
+        paths.raw_market_data: data/raw/IEX_combined.xlsx
+        paths.raw_weather_data: data/raw/IEX_weather.xlsx
+    outs:
+    - path: reports/data_summary.txt
+      hash: md5
+      md5: 68853d30ac181296fcb3df6540810285
+      size: 11662
+  merge:
+    cmd: python merge_data.py --data-dir data/raw --output-path 
+      data/processed/master_dataset.csv --report-path reports/merge_report.txt
+    deps:
+    - path: data/raw/IEX_combined.xlsx
+      hash: md5
+      md5: 82abc56896883122cc3dd1e5b871b919
+      size: 6464964
+    - path: data/raw/IEX_weather.xlsx
+      hash: md5
+      md5: fe01f056fa46acec91bd9cb18b27f161
+      size: 37786843
+    - path: merge_data.py
+      hash: md5
+      md5: 0b313afff18c0faf1d2f34eb187f8f30
+      size: 6962
+    params:
+      params.yaml:
+        merge.keys:
+        - Date
+        - Hour
+        paths.master_dataset: data/processed/master_dataset.csv
+        paths.merge_report: reports/merge_report.txt
+        paths.raw_data_dir: data/raw
+    outs:
+    - path: data/processed/master_dataset.csv
+      hash: md5
+      md5: 2192af8bb123c2943a465d988d595257
+      size: 11045331
+    - path: reports/merge_report.txt
+      hash: md5
+      md5: 201d3d8edaf4ca63fbd40d5b956503ba
+      size: 3331
+  clean:
+    cmd: python clean_data.py --input-path data/processed/master_dataset.csv 
+      --output-path data/processed/cleaned_dataset.csv --report-path 
+      reports/cleaning_report.txt
+    deps:
+    - path: clean_data.py
+      hash: md5
+      md5: 0d9ffa91bccda7ad84c282a4364cc05e
+      size: 6742
+    - path: data/processed/master_dataset.csv
+      hash: md5
+      md5: 2192af8bb123c2943a465d988d595257
+      size: 11045331
+    - path: validation_reports/validation_result.json
+      hash: md5
+      md5: 51125c0bc704619c3178cc5fe59effcd
+      size: 30929
+    params:
+      params.yaml:
+        clean.missing_value_strategy: forward_fill_then_numeric_median
+        clean.outlier_method: iqr
+        paths.cleaned_dataset: data/processed/cleaned_dataset.csv
+        paths.cleaning_report: reports/cleaning_report.txt
+        paths.master_dataset: data/processed/master_dataset.csv
+    outs:
+    - path: data/processed/cleaned_dataset.csv
+      hash: md5
+      md5: 2192af8bb123c2943a465d988d595257
+      size: 11045331
+    - path: reports/cleaning_report.txt
+      hash: md5
+      md5: 77b50e56ac0fb7fd6a1ca243152b7f6d
+      size: 17479
+  feature_engineering:
+    cmd: python feature_engineering.py --input-path 
+      data/processed/cleaned_dataset.csv --output-path 
+      data/processed/engineered_dataset.csv --report-path 
+      reports/feature_engineering_report.txt --lags 1,2,24,48 --rolling-windows 
+      24
+    deps:
+    - path: data/processed/cleaned_dataset.csv
+      hash: md5
+      md5: 2192af8bb123c2943a465d988d595257
+      size: 11045331
+    - path: feature_engineering.py
+      hash: md5
+      md5: ecba82d1d42c923af6bb3eb0005639df
+      size: 9657
+    params:
+      params.yaml:
+        feature_engineering.lags: 1,2,24,48
+        feature_engineering.rolling_windows: 24
+        paths.cleaned_dataset: data/processed/cleaned_dataset.csv
+        paths.engineered_dataset: data/processed/engineered_dataset.csv
+        paths.feature_engineering_report: reports/feature_engineering_report.txt
+    outs:
+    - path: data/processed/engineered_dataset.csv
+      hash: md5
+      md5: 58b332e28b7a6b8ffdaed00703969775
+      size: 13286215
+    - path: reports/feature_engineering_report.txt
+      hash: md5
+      md5: dd22fbb22d3eec74f183156fa42631fc
+      size: 1466
+  train:
+    cmd: python xgboost_pipeline.py --input-path 
+      data/processed/engineered_dataset.csv --model-path 
+      models/xgboost_model.pkl --report-path reports/xgboost_model_report.txt 
+      --plot-dir reports/modeling --test-size 0.2 --random-state 42 
+      --n-estimators 500 --learning-rate 0.04 --max-depth 5 --subsample 0.85 
+      --colsample-bytree 0.85 --eval-metric rmse
+    deps:
+    - path: data/processed/engineered_dataset.csv
+      hash: md5
+      md5: 58b332e28b7a6b8ffdaed00703969775
+      size: 13286215
+    - path: mlops/mlflow_utils.py
+      hash: md5
+      md5: d9c1ef0ef0ae8f9b103f9f3f5df01e8e
+      size: 2685
+    - path: xgboost_pipeline.py
+      hash: md5
+      md5: a3985a3dcbd853599412e6f95a716b42
+      size: 19635
+    params:
+      params.yaml:
+        paths.engineered_dataset: data/processed/engineered_dataset.csv
+        paths.model: models/xgboost_model.pkl
+        paths.modeling_plot_dir: reports/modeling
+        paths.training_report: reports/xgboost_model_report.txt
+        train:
+          test_size: 0.2
+          random_state: 42
+          model_type: xgboost_regressor
+          objective: reg:squarederror
+          n_estimators: 500
+          learning_rate: 0.04
+          max_depth: 5
+          subsample: 0.85
+          colsample_bytree: 0.85
+          eval_metric: rmse
+    outs:
+    - path: models/xgboost_model.pkl
+      hash: md5
+      md5: bd254f02993310df95fd40017bca89bf
+      size: 1349818
+    - path: reports/modeling
+      hash: md5
+      md5: 75a82839502166ef8cab73f0362af237.dir
+      size: 619787
+      nfiles: 4
+    - path: reports/xgboost_model_report.txt
+      hash: md5
+      md5: cb53a310fe423bdc98fdae2af62f3c5f
+      size: 840
+  validate:
+    cmd: python validate_data.py --input-path data/processed/master_dataset.csv 
+      --context-root-dir expectations --reports-dir validation_reports
+    deps:
+    - path: data/processed/master_dataset.csv
+      hash: md5
+      md5: 2192af8bb123c2943a465d988d595257
+      size: 11045331
+    - path: validate_data.py
+      hash: md5
+      md5: 47f8c4bb38a482279fd97ea7decb0714
+      size: 16057
+    params:
+      params.yaml:
+        paths.expectation_suite: 
+          expectations/expectations/iex_power_data_quality.json
+        paths.expectations_dir: expectations
+        paths.master_dataset: data/processed/master_dataset.csv
+        paths.validation_report_html: validation_reports/validation_report.html
+        paths.validation_report_json: validation_reports/validation_result.json
+        paths.validation_reports_dir: validation_reports
+    outs:
+    - path: expectations/expectations/iex_power_data_quality.json
+      hash: md5
+      md5: 43a7c39e00a97cc82a19250c92140649
+      size: 8011
+    - path: validation_reports/validation_report.html
+      hash: md5
+      md5: 1ad8719e219cd9daddd0133f4c3ad462
+      size: 7414
+    - path: validation_reports/validation_result.json
+      hash: md5
+      md5: 51125c0bc704619c3178cc5fe59effcd
+      size: 30929
+  feature_store:
+    cmd: python mlops/feature_store/prepare_feature_store_data.py --input-path 
+      data/processed/engineered_dataset.csv --output-path 
+      data/processed/feature_engineered.csv --parquet-output-path 
+      data/processed/feature_engineered.parquet --entity-id IEX_DAM
+    deps:
+    - path: data/processed/engineered_dataset.csv
+      hash: md5
+      md5: 58b332e28b7a6b8ffdaed00703969775
+      size: 13286215
+    - path: mlops/feature_store/prepare_feature_store_data.py
+      hash: md5
+      md5: f192b5148f49a2031c84f7cb5c180691
+      size: 10171
+    params:
+      params.yaml:
+        feature_store.entity_id: IEX_DAM
+        paths.engineered_dataset: data/processed/engineered_dataset.csv
+        paths.feast_feature_parquet: data/processed/feature_engineered.parquet
+        paths.feast_feature_table: data/processed/feature_engineered.csv
+    outs:
+    - path: data/processed/feature_engineered.csv
+      hash: md5
+      md5: f702fc44b2dd23365020a67188907502
+      size: 6849301
+    - path: data/processed/feature_engineered.parquet
+      hash: md5
+      md5: 14fa947319e61b204f1be728e2c42e5d
+      size: 2417547

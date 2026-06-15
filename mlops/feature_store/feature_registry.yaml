@@ -1,0 +1,28 @@
+feature_groups:
+  mcp_calendar_features:
+    source: data/feature_store/mcp_features.parquet
+    owner: forecasting
+    features:
+      - hour
+      - weekday
+  mcp_lag_features:
+    source: data/feature_store/mcp_features.parquet
+    owner: forecasting
+    features:
+      - lag_1
+      - lag_24
+      - lag_48
+  mcp_rolling_features:
+    source: data/feature_store/mcp_features.parquet
+    owner: forecasting
+    features:
+      - rolling_mean_24
+      - rolling_std_24
+  mcp_weather_features:
+    source: data/feature_store/mcp_features.parquet
+    owner: forecasting
+    features:
+      - temperature
+      - humidity
+      - wind_speed
+      - solar_radiation

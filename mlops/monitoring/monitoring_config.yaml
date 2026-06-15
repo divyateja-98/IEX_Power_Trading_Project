@@ -1,0 +1,19 @@
+service:
+  health_endpoint: /health
+  backend_module: backend.app.main:app
+
+data_quality:
+  required_columns:
+    - Date
+    - Hour
+  max_missing_rate: 0.05
+
+model_quality:
+  target_metric: RMSE
+  report_path: reports/xgboost_model_report.txt
+
+recommendations:
+  allowed_actions:
+    - BUY NOW
+    - WAIT
+    - SELL

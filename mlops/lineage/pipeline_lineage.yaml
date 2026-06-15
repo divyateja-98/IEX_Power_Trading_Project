@@ -1,0 +1,35 @@
+artifacts:
+  raw_market:
+    path: data/raw/IEX_combined.xlsx
+    produced_by: external_source
+    consumed_by:
+      - ingest
+      - merge
+  raw_weather:
+    path: data/raw/IEX_weather.xlsx
+    produced_by: external_source
+    consumed_by:
+      - ingest
+      - merge
+  master_dataset:
+    path: data/processed/master_dataset.csv
+    produced_by: merge
+    consumed_by:
+      - clean
+  cleaned_dataset:
+    path: data/processed/cleaned_dataset.csv
+    produced_by: clean
+    consumed_by:
+      - feature_engineering
+      - risk_analytics
+  engineered_dataset:
+    path: data/processed/engineered_dataset.csv
+    produced_by: feature_engineering
+    consumed_by:
+      - train
+  xgboost_model:
+    path: models/xgboost_model.pkl
+    produced_by: train
+    consumed_by:
+      - backend
+      - recommendations

@@ -1,0 +1,5 @@
+outs:
+- md5: 82abc56896883122cc3dd1e5b871b919
+  size: 6464964
+  hash: md5
+  path: IEX_combined.xlsx
