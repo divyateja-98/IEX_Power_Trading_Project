@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: iex-power-trading-mlops
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: iex-power-trading-mlops
+    app.kubernetes.io/part-of: iex-power-trading
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/IEX_Power_Trading_Project.git
+    targetRevision: main
+    path: mlops/kubernetes
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: iex-mlops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 10
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

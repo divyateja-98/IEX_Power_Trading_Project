@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.model_loader import ModelService, load_model_service
@@ -18,6 +19,8 @@ from api.schemas import (
     PredictionRequest,
     PredictionResponse,
 )
+from lineage.openlineage_config import lineage_run
+from monitoring.prometheus_metrics import setup_prometheus_metrics
 
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -26,6 +29,15 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 LOGGER = logging.getLogger(__name__)
+
+
+def get_cors_origins() -> list[str]:
+    """Return allowed browser origins for the React frontend."""
+    raw_origins = os.getenv(
+        "CORS_ALLOW_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080",
+    )
+    return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 
 
 @asynccontextmanager
@@ -60,6 +72,15 @@ app = FastAPI(
         {"name": "metadata", "description": "Serving model metadata."},
     ],
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_cors_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+setup_prometheus_metrics(app)
 
 
 @app.exception_handler(ValueError)
@@ -129,7 +150,18 @@ def predict(request: PredictionRequest) -> PredictionResponse:
         len(request.features),
     )
 
-    prediction, confidence = service.predict(request.features)
+    with lineage_run(
+        "prediction_job",
+        inputs=[service.model_uri],
+        outputs=[f"prediction_response/{request.request_id or 'anonymous'}"],
+        metadata={
+            "stage": "prediction",
+            "request_id": request.request_id,
+            "feature_count": len(request.features),
+            "model_source": service.model_source,
+        },
+    ):
+        prediction, confidence = service.predict(request.features)
     LOGGER.info(
         "Prediction completed. request_id=%s prediction=%.6f confidence=%.6f",
         request.request_id,

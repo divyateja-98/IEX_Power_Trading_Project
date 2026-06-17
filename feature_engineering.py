@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from lineage.openlineage_config import lineage_run
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_INPUT_PATH = PROJECT_ROOT / "data" / "processed" / "cleaned_dataset.csv"
 DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "engineered_dataset.csv"
@@ -251,24 +253,34 @@ def main() -> None:
     configure_logging()
     args = parse_args()
 
-    dataframe = load_dataset(args.input_path)
-    target_column = resolve_target_column(dataframe)
-    validate_required_columns(dataframe, target_column)
-    lags = parse_int_csv(args.lags)
-    rolling_windows = parse_int_csv(args.rolling_windows)
+    with lineage_run(
+        "feature_engineering",
+        inputs=[args.input_path],
+        outputs=[args.output_path, args.report_path],
+        metadata={
+            "stage": "feature_engineering",
+            "lags": args.lags,
+            "rolling_windows": args.rolling_windows,
+        },
+    ):
+        dataframe = load_dataset(args.input_path)
+        target_column = resolve_target_column(dataframe)
+        validate_required_columns(dataframe, target_column)
+        lags = parse_int_csv(args.lags)
+        rolling_windows = parse_int_csv(args.rolling_windows)
 
-    engineered = engineer_features(dataframe, target_column, lags, rolling_windows)
-    report = build_feature_report(
-        input_shape=dataframe.shape,
-        output_shape=engineered.shape,
-        target_column=target_column,
-        engineered=engineered,
-        lags=lags,
-        rolling_windows=rolling_windows,
-    )
-    print(report)
+        engineered = engineer_features(dataframe, target_column, lags, rolling_windows)
+        report = build_feature_report(
+            input_shape=dataframe.shape,
+            output_shape=engineered.shape,
+            target_column=target_column,
+            engineered=engineered,
+            lags=lags,
+            rolling_windows=rolling_windows,
+        )
+        print(report)
 
-    save_outputs(engineered, report, args.output_path, args.report_path)
+        save_outputs(engineered, report, args.output_path, args.report_path)
 
 
 if __name__ == "__main__":

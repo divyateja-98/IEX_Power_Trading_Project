@@ -10,6 +10,7 @@ openpyxl
 pandas>=2.1.0,<3.0
 pyarrow
 pydantic
+prometheus-client
 python-dotenv
 pyyaml
 scikit-learn>=1.4.0,<2.0
@@ -25,6 +26,7 @@ cvxpy
 # Developer tooling
 black
 dvc
+evidently
 flake8
 great_expectations>=1.0,<2.0
 isort

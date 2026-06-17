@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: IEX FastAPI Dashboards
+    orgId: 1
+    folder: IEX Power Trading
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

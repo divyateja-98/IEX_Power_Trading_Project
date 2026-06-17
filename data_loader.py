@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from lineage.openlineage_config import lineage_run
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 REPORT_PATH = PROJECT_ROOT / "reports" / "data_summary.txt"
@@ -80,28 +82,34 @@ def main() -> None:
     configure_logging()
     args = parse_args()
 
-    summaries: list[str] = []
-    for file_name in DATA_FILES:
-        file_path = args.data_dir / file_name
-        if not file_path.exists():
-            logging.warning("File not found, skipping: %s", file_path)
-            summaries.append(
-                "\n".join(
-                    [
-                        f"Dataset: {file_name}",
-                        "-" * (len(file_name) + 9),
-                        f"Status: File not found at {file_path}",
-                    ]
+    with lineage_run(
+        "data_ingestion",
+        inputs=[args.data_dir / file_name for file_name in DATA_FILES],
+        outputs=[args.report_path],
+        metadata={"stage": "data_ingestion", "source_format": "excel"},
+    ):
+        summaries: list[str] = []
+        for file_name in DATA_FILES:
+            file_path = args.data_dir / file_name
+            if not file_path.exists():
+                logging.warning("File not found, skipping: %s", file_path)
+                summaries.append(
+                    "\n".join(
+                        [
+                            f"Dataset: {file_name}",
+                            "-" * (len(file_name) + 9),
+                            f"Status: File not found at {file_path}",
+                        ]
+                    )
                 )
-            )
-            continue
+                continue
 
-        dataframe = load_excel_file(file_path)
-        summary = build_dataset_summary(file_name, dataframe)
-        print(summary)
-        summaries.append(summary)
+            dataframe = load_excel_file(file_path)
+            summary = build_dataset_summary(file_name, dataframe)
+            print(summary)
+            summaries.append(summary)
 
-    write_summary_report(summaries, args.report_path)
+        write_summary_report(summaries, args.report_path)
 
 
 if __name__ == "__main__":

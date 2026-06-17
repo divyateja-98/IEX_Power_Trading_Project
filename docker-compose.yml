@@ -7,6 +7,8 @@ services:
     environment:
       MLFLOW_TRACKING_URI: sqlite:////app/mlflow.db
       LOG_LEVEL: INFO
+      OPENLINEAGE_URL: http://marquez:5000/api/v1/lineage
+      OPENLINEAGE_NAMESPACE: iex-power-trading
     ports:
       - "8002:8002"
     volumes:
@@ -27,6 +29,43 @@ services:
       timeout: 10s
       retries: 3
       start_period: 45s
+    restart: unless-stopped
+    networks:
+      - iex-network
+
+  marquez:
+    image: marquezproject/marquez:latest
+    container_name: iex-marquez
+    environment:
+      MARQUEZ_PORT: 5000
+      MARQUEZ_ADMIN_PORT: 5001
+      POSTGRES_HOST: marquez-db
+      POSTGRES_PORT: 5432
+      SEARCH_ENABLED: "false"
+    ports:
+      - "5001:5000"
+      - "5002:5001"
+    volumes:
+      - marquez-data:/opt/marquez
+    depends_on:
+      - marquez-db
+    restart: unless-stopped
+    networks:
+      - iex-network
+
+  marquez-db:
+    image: postgres:14
+    container_name: iex-marquez-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      MARQUEZ_DB: marquez
+      MARQUEZ_USER: marquez
+      MARQUEZ_PASSWORD: marquez
+    ports:
+      - "5433:5432"
+    volumes:
+      - marquez-db-data:/var/lib/postgresql/data
     restart: unless-stopped
     networks:
       - iex-network
@@ -55,6 +94,36 @@ services:
       timeout: 10s
       retries: 3
       start_period: 45s
+    restart: unless-stopped
+    networks:
+      - iex-network
+
+  react-frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_FASTAPI_BASE_URL: http://127.0.0.1:8002
+    container_name: iex-react-frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      fastapi:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:8080/",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
     networks:
       - iex-network
@@ -158,3 +227,5 @@ networks:
 volumes:
   prometheus-data:
   grafana-data:
+  marquez-data:
+  marquez-db-data:

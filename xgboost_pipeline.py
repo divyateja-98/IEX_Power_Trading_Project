@@ -22,6 +22,7 @@ from sklearn.metrics import (
 )
 from xgboost import XGBRegressor
 
+from lineage.openlineage_config import lineage_run
 from mlops.mlflow_utils import (
     DEFAULT_EXPERIMENT_NAME,
     DEFAULT_MODEL_REGISTRY_NAME,
@@ -456,25 +457,118 @@ def main() -> None:
     configure_logging()
     args = parse_args()
 
-    if args.use_feast:
-        dataframe = load_dataset_from_feast(args.feast_repo_path, args.feast_entity_path)
-    else:
-        dataframe = load_dataset(args.input_path)
-    target_column = resolve_target_column(dataframe)
-    X, y, _, feature_columns = prepare_model_data(dataframe, target_column)
-    X_train, X_test, y_train, y_test = time_based_train_test_split(X, y, args.test_size)
-
     feature_importance_path = args.plot_dir / "feature_importance.png"
     actual_vs_predicted_path = args.plot_dir / "actual_vs_predicted.png"
+    lineage_inputs = [args.feast_entity_path] if args.use_feast else [args.input_path]
+    lineage_outputs = [
+        args.model_path,
+        args.report_path,
+        feature_importance_path,
+        actual_vs_predicted_path,
+    ]
 
-    mlflow_run_id = None
-    promoted_model_version = None
-    if not args.disable_mlflow:
-        setup_mlflow(
-            experiment_name=args.mlflow_experiment_name,
-            tracking_uri=args.mlflow_tracking_uri,
+    with lineage_run(
+        "model_training",
+        inputs=lineage_inputs,
+        outputs=lineage_outputs,
+        metadata={
+            "stage": "model_training",
+            "model_family": "xgboost",
+            "use_feast": args.use_feast,
+            "mlflow_enabled": not args.disable_mlflow,
+            "registered_model_name": args.registered_model_name,
+        },
+    ):
+        if args.use_feast:
+            dataframe = load_dataset_from_feast(args.feast_repo_path, args.feast_entity_path)
+        else:
+            dataframe = load_dataset(args.input_path)
+        target_column = resolve_target_column(dataframe)
+        X, y, _, feature_columns = prepare_model_data(dataframe, target_column)
+        X_train, X_test, y_train, y_test = time_based_train_test_split(
+            X, y, args.test_size
         )
-        with mlflow.start_run(run_name=args.mlflow_run_name) as run:
+
+        mlflow_run_id = None
+        promoted_model_version = None
+        if not args.disable_mlflow:
+            setup_mlflow(
+                experiment_name=args.mlflow_experiment_name,
+                tracking_uri=args.mlflow_tracking_uri,
+            )
+            with mlflow.start_run(run_name=args.mlflow_run_name) as run:
+                model = train_model(
+                    X_train=X_train,
+                    y_train=y_train,
+                    n_estimators=args.n_estimators,
+                    learning_rate=args.learning_rate,
+                    max_depth=args.max_depth,
+                    subsample=args.subsample,
+                    colsample_bytree=args.colsample_bytree,
+                    random_state=args.random_state,
+                    eval_metric=args.eval_metric,
+                )
+                predictions = model.predict(X_test)
+                prediction_series = pd.Series(predictions)
+                metrics = evaluate_model(y_test, prediction_series)
+
+                plot_feature_importance(model, feature_columns, feature_importance_path)
+                plot_actual_vs_predicted(
+                    y_test, prediction_series, actual_vs_predicted_path
+                )
+                save_model(model, args.model_path)
+
+                mlflow.log_params(
+                    {
+                        "max_depth": args.max_depth,
+                        "learning_rate": args.learning_rate,
+                        "n_estimators": args.n_estimators,
+                        "train_size": round(1 - args.test_size, 6),
+                    }
+                )
+                mlflow.log_metrics(
+                    {
+                        "RMSE": float(metrics["RMSE"]),
+                        "MAE": float(metrics["MAE"]),
+                        "MAPE": float(metrics["MAPE"]),
+                        "R2": float(metrics["R2"]),
+                    }
+                )
+                log_xgboost_artifacts(
+                    {
+                        "feature_importance": feature_importance_path,
+                        "actual_vs_predicted": actual_vs_predicted_path,
+                    }
+                )
+                registered_model_version = log_xgboost_model(
+                    model=model,
+                    X_test=X_test,
+                    predictions=prediction_series,
+                    registered_model_name=args.registered_model_name,
+                )
+                promoted_model_version = registered_model_version
+                mlflow.set_tags(
+                    {
+                        "project": "IEX Power Trading Risk Optimization",
+                        "model_family": "xgboost",
+                        "task": "mcp_forecasting",
+                        "train_rows": str(len(X_train)),
+                        "test_rows": str(len(X_test)),
+                    }
+                )
+                mlflow_run_id = run.info.run_id
+                logging.info(
+                    "Logged MLflow run %s and registered model as %s",
+                    mlflow_run_id,
+                    args.registered_model_name,
+                )
+            if args.promote_stage:
+                promoted_model_version = promote_latest_model_version(
+                    args.registered_model_name,
+                    args.promote_stage,
+                    tracking_uri=args.mlflow_tracking_uri,
+                )
+        else:
             model = train_model(
                 X_train=X_train,
                 y_train=y_train,
@@ -489,110 +583,38 @@ def main() -> None:
             predictions = model.predict(X_test)
             prediction_series = pd.Series(predictions)
             metrics = evaluate_model(y_test, prediction_series)
-
             plot_feature_importance(model, feature_columns, feature_importance_path)
-            plot_actual_vs_predicted(
-                y_test, prediction_series, actual_vs_predicted_path
-            )
+            plot_actual_vs_predicted(y_test, prediction_series, actual_vs_predicted_path)
             save_model(model, args.model_path)
 
-            mlflow.log_params(
-                {
-                    "max_depth": args.max_depth,
-                    "learning_rate": args.learning_rate,
-                    "n_estimators": args.n_estimators,
-                    "train_size": round(1 - args.test_size, 6),
-                }
-            )
-            mlflow.log_metrics(
-                {
-                    "RMSE": float(metrics["RMSE"]),
-                    "MAE": float(metrics["MAE"]),
-                    "MAPE": float(metrics["MAPE"]),
-                    "R2": float(metrics["R2"]),
-                }
-            )
-            log_xgboost_artifacts(
-                {
-                    "feature_importance": feature_importance_path,
-                    "actual_vs_predicted": actual_vs_predicted_path,
-                }
-            )
-            registered_model_version = log_xgboost_model(
-                model=model,
-                X_test=X_test,
-                predictions=prediction_series,
-                registered_model_name=args.registered_model_name,
-            )
-            promoted_model_version = registered_model_version
-            mlflow.set_tags(
-                {
-                    "project": "IEX Power Trading Risk Optimization",
-                    "model_family": "xgboost",
-                    "task": "mcp_forecasting",
-                    "train_rows": str(len(X_train)),
-                    "test_rows": str(len(X_test)),
-                }
-            )
-            mlflow_run_id = run.info.run_id
-            logging.info(
-                "Logged MLflow run %s and registered model as %s",
-                mlflow_run_id,
-                args.registered_model_name,
-            )
-        if args.promote_stage:
-            promoted_model_version = promote_latest_model_version(
-                args.registered_model_name,
-                args.promote_stage,
-                tracking_uri=args.mlflow_tracking_uri,
-            )
-    else:
-        model = train_model(
-            X_train=X_train,
-            y_train=y_train,
-            n_estimators=args.n_estimators,
-            learning_rate=args.learning_rate,
-            max_depth=args.max_depth,
-            subsample=args.subsample,
-            colsample_bytree=args.colsample_bytree,
-            random_state=args.random_state,
-            eval_metric=args.eval_metric,
+        report = build_report(
+            target_column=target_column,
+            feature_columns=feature_columns,
+            train_rows=len(X_train),
+            test_rows=len(X_test),
+            metrics=metrics,
+            model_path=args.model_path,
+            feature_importance_path=feature_importance_path,
+            actual_vs_predicted_path=actual_vs_predicted_path,
         )
-        predictions = model.predict(X_test)
-        prediction_series = pd.Series(predictions)
-        metrics = evaluate_model(y_test, prediction_series)
-        plot_feature_importance(model, feature_columns, feature_importance_path)
-        plot_actual_vs_predicted(y_test, prediction_series, actual_vs_predicted_path)
-        save_model(model, args.model_path)
+        args.report_path.parent.mkdir(parents=True, exist_ok=True)
+        if mlflow_run_id:
+            report = "\n".join(
+                [
+                    report,
+                    "",
+                    "MLflow:",
+                    f"- Experiment: {args.mlflow_experiment_name}",
+                    f"- Run ID: {mlflow_run_id}",
+                    f"- Registered model: {args.registered_model_name}",
+                    f"- Promoted version: {promoted_model_version}",
+                    f"- Stage: {args.promote_stage}",
+                ]
+            )
+        args.report_path.write_text(report, encoding="utf-8")
 
-    report = build_report(
-        target_column=target_column,
-        feature_columns=feature_columns,
-        train_rows=len(X_train),
-        test_rows=len(X_test),
-        metrics=metrics,
-        model_path=args.model_path,
-        feature_importance_path=feature_importance_path,
-        actual_vs_predicted_path=actual_vs_predicted_path,
-    )
-    args.report_path.parent.mkdir(parents=True, exist_ok=True)
-    if mlflow_run_id:
-        report = "\n".join(
-            [
-                report,
-                "",
-                "MLflow:",
-                f"- Experiment: {args.mlflow_experiment_name}",
-                f"- Run ID: {mlflow_run_id}",
-                f"- Registered model: {args.registered_model_name}",
-                f"- Promoted version: {promoted_model_version}",
-                f"- Stage: {args.promote_stage}",
-            ]
-        )
-    args.report_path.write_text(report, encoding="utf-8")
-
-    print(report)
-    logging.info("Saved model report: %s", args.report_path)
+        print(report)
+        logging.info("Saved model report: %s", args.report_path)
 
 
 if __name__ == "__main__":
